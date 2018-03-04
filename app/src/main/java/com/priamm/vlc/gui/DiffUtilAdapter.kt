@@ -1,0 +1,69 @@
+package com.priamm.vlc.gui
+
+import android.support.annotation.MainThread
+import android.support.annotation.WorkerThread
+import android.support.v7.util.DiffUtil
+import android.support.v7.widget.RecyclerView
+import kotlinx.coroutines.experimental.android.UI
+import kotlinx.coroutines.experimental.channels.Channel
+import kotlinx.coroutines.experimental.channels.actor
+import kotlinx.coroutines.experimental.newSingleThreadContext
+import kotlinx.coroutines.experimental.withContext
+import java.util.*
+
+abstract class DiffUtilAdapter<D, VH : RecyclerView.ViewHolder> : RecyclerView.Adapter<VH>() {
+
+    protected var dataset: List<D> = listOf()
+    private set
+    @Volatile private var last = dataset
+    private val diffCallback by lazy(LazyThreadSafetyMode.NONE) { createCB() }
+    private val updateActor = actor<List<D>>(newSingleThreadContext("vlc-updater"), capacity = Channel.CONFLATED) {
+        for (list in channel) internalUpdate(list)
+    }
+    protected abstract fun onUpdateFinished()
+
+    @MainThread
+    fun update (list: List<D>) {
+        last = list
+        updateActor.offer(list)
+    }
+
+    @WorkerThread
+    private suspend fun internalUpdate(list: List<D>) {
+        val finalList = prepareList(list)
+        val result = DiffUtil.calculateDiff(diffCallback.apply { update(dataset, finalList) }, detectMoves())
+        withContext(UI) {
+            dataset = finalList
+            result.dispatchUpdatesTo(this@DiffUtilAdapter)
+            onUpdateFinished()
+        }
+    }
+
+    protected open fun prepareList(list: List<D>) : List<D> = ArrayList(list)
+
+    fun peekLast() = last
+
+    fun hasPendingUpdates() = updateActor.isFull
+
+    protected open fun detectMoves() = false
+
+    protected open fun createCB() = DiffCallback<D>()
+
+    open class DiffCallback<D> : DiffUtil.Callback() {
+        lateinit var oldList: List<D>
+        lateinit var newList: List<D>
+
+        fun update(oldList: List<D>, newList: List<D>) {
+            this.oldList = oldList
+            this.newList = newList
+        }
+
+        override fun getOldListSize() = oldList.size
+
+        override fun getNewListSize() = newList.size
+
+        override fun areContentsTheSame(oldItemPosition : Int, newItemPosition : Int) = true
+
+        override fun areItemsTheSame(oldItemPosition : Int, newItemPosition : Int) = oldList[oldItemPosition] == newList[newItemPosition]
+    }
+}

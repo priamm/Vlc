@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.priamm.vlc.api">
+
+    <uses-sdk android:minSdkVersion="9" />
+
+    <application android:label="@string/app_name"
+        android:supportsRtl="true">
+
+        <activity android:name="com.priamm.vlc.extensions.api.WarningActivity"
+            android:theme="@style/TransparentTheme" />
+    </application>
+
+</manifest>

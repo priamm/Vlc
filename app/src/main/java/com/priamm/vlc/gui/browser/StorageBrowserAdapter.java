@@ -1,0 +1,110 @@
+/*
+ * *************************************************************************
+ *  StorageBrowserAdapter.java
+ * **************************************************************************
+ *  Copyright © 2015 VLC authors and VideoLAN
+ *  Author: Geoffrey Métais
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
+ *  ***************************************************************************
+ */
+
+package com.priamm.vlc.gui.browser;
+
+import android.support.annotation.MainThread;
+import android.view.View;
+import android.widget.CheckBox;
+
+import com.priamm.medialibrary.media.MediaLibraryItem;
+import com.priamm.medialibrary.media.MediaWrapper;
+import com.priamm.medialibrary.media.Storage;
+import com.priamm.vlc.VLCApplication;
+import com.priamm.vlc.gui.helpers.MedialibraryUtils;
+import com.priamm.vlc.gui.helpers.ThreeStatesCheckbox;
+import com.priamm.vlc.util.CustomDirectories;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+class StorageBrowserAdapter extends BaseBrowserAdapter {
+
+    private static List<String> mMediaDirsLocation;
+    private static List<String> mCustomDirsLocation;
+
+    StorageBrowserAdapter(BaseBrowserFragment fragment) {
+        super(fragment);
+        updateMediaDirs();
+    }
+
+    @Override
+    public void onBindViewHolder(final ViewHolder holder, int position) {
+        final MediaViewHolder vh = (MediaViewHolder) holder;
+        MediaLibraryItem storage = getItem(position);
+
+        if (storage.getItemType() == MediaLibraryItem.TYPE_MEDIA)
+            storage = new Storage(((MediaWrapper)storage).getUri());
+        String storagePath = ((Storage)storage).getUri().getPath();
+        if (!storagePath.endsWith("/"))
+            storagePath += "/";
+        boolean hasContextMenu = mCustomDirsLocation.contains(storagePath);
+        boolean checked = ((StorageBrowserFragment) fragment).mScannedDirectory || mMediaDirsLocation.contains(storagePath);
+        vh.binding.setItem(storage);
+        vh.binding.setHasContextMenu(hasContextMenu);
+        if (checked)
+            vh.binding.browserCheckbox.setState(ThreeStatesCheckbox.STATE_CHECKED);
+        else if (hasDiscoveredChildren(storagePath))
+            vh.binding.browserCheckbox.setState(ThreeStatesCheckbox.STATE_PARTIAL);
+        else
+            vh.binding.browserCheckbox.setState(ThreeStatesCheckbox.STATE_UNCHECKED);
+        vh.binding.setCheckEnabled(!((StorageBrowserFragment) fragment).mScannedDirectory);
+    }
+
+    private boolean hasDiscoveredChildren(String path) {
+        for (String directory : mMediaDirsLocation)
+            if (directory.startsWith(path))
+                return true;
+        return false;
+    }
+
+    @MainThread
+    public void addItem(MediaLibraryItem item, boolean top, int position) {
+        if (item.getItemType() == MediaLibraryItem.TYPE_MEDIA)
+            item = new Storage(((MediaWrapper)item).getUri());
+        else if (item.getItemType() != MediaLibraryItem.TYPE_STORAGE)
+            return;
+        super.addItem(item, top, position);
+    }
+
+    void updateMediaDirs() {
+        if (mMediaDirsLocation != null) mMediaDirsLocation.clear();
+        final String folders[] = VLCApplication.getMLInstance().getFoldersList();
+        mMediaDirsLocation = new ArrayList<>(folders.length);
+        for (String folder : folders) {
+            mMediaDirsLocation.add(folder.startsWith("file://") ? folder.substring(7) : folder);
+        }
+        mCustomDirsLocation = new ArrayList<>(Arrays.asList(CustomDirectories.getCustomDirectories()));
+    }
+
+    protected void checkBoxAction(View v, String mrl) {
+       final  ThreeStatesCheckbox tscb = (ThreeStatesCheckbox) v;
+        int state = tscb.getState();
+        if (state == ThreeStatesCheckbox.STATE_CHECKED)
+            MedialibraryUtils.addDir(mrl);
+        else
+            MedialibraryUtils.removeDir(mrl);
+        ((StorageBrowserFragment)fragment).processEvent((CheckBox) v, mrl);
+    }
+}
